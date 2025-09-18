@@ -612,7 +612,6 @@ class OneShotRLVRTrainer:
 
         out_data = sampler(
             input_strings=input_batch,
-            total_generation_steps=self.total_generation_steps,
             temperature=temperature,
             top_k=top_k,
             top_p=top_p,
