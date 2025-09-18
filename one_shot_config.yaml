@@ -1,14 +1,13 @@
-# One-Shot RLVR Configuration
+# One-Shot RLVR Configuration - Memory Optimized
 # Based on "Reinforcement Learning for Reasoning in Large Language Models with One Training Example"
-
 defaults:
-  - _self_
+  - *self*
 
 # Data configuration for One-Shot RLVR
 data:
   # Key One-Shot RLVR parameters
   num_shots: 1  # Number of training examples (1, 4, 16 from paper)
-  duplicate_factor: 128  # Duplicate examples to fill batches
+  duplicate_factor: 32  # REDUCED from 128 to fit in memory
   
   # Dataset configuration
   train_dataset: one_shot_rlvr  # Special dataset with paper examples
@@ -16,8 +15,8 @@ data:
   test_dataset: math500  # Evaluation dataset
   test_split: test
   
-  batch_size: 128  # Paper uses 128
-  max_prompt_length: 1024  # Context length
+  batch_size: 32  # REDUCED from 128 to fit in memory
+  max_prompt_length: 512  # REDUCED from 1024 to save memory
   num_test_batches: 100
   
   train_data_dir: "./data/train"
@@ -27,14 +26,17 @@ data:
 model:
   name: 'qwen3-0.6b'  # Can also use qwen3-1.5b for R1-Distill experiments
   mesh_config: '[[1, 4], ["fsdp", "tp"]]'
+  # Add memory optimization settings
+  use_gradient_checkpointing: true  # Trade compute for memory
+  dtype: 'bfloat16'  # Use mixed precision to reduce memory
 
 # Algorithm parameters (following One-Shot RLVR paper)
 algorithm:
-  total_generation_steps: 768
+  total_generation_steps: 256  # REDUCED from 768 to fit in memory
   temperature: 0.6  # Paper uses 0.6 for evaluation, 0.9 for training diversity
   top_p: 0.95  # Paper uses 0.95 (not 1.0 like demo)
   top_k: 50
-  num_generations: 2  # Generate multiple responses per prompt
+  num_generations: 1  # REDUCED from 2 to save memory
   num_iterations: 1
   beta: 0.08  # KL divergence penalty
   epsilon: 0.2  # PPO-style clipping
@@ -50,12 +52,16 @@ trainer:
   max_grad_norm: 0.1
   
   # Training steps calculation: num_batches * num_iterations * epochs
-  num_batches: 64  # Reduced since we're doing few-shot
+  num_batches: 16  # REDUCED from 64 to fit in memory
   total_epochs: 1
+  
+  # Memory optimization settings
+  gradient_accumulation_steps: 4  # Simulate larger batches
+  max_memory_per_gpu: 0.8  # Use only 80% of GPU memory
   
   # Checkpointing and logging
   save_freq: 20
-  max_to_keep: 4
+  max_to_keep: 2  # REDUCED from 4 to save disk space
   test_freq: 10
   
   checkpoint_dir: "./checkpoints/one_shot_rlvr/"
@@ -63,8 +69,14 @@ trainer:
   metrics_log_dir: "./logs/tensorboard/one_shot_rlvr/"
   tensorboard_port: 6006
 
+# Memory management
+memory:
+  clear_cache_between_steps: true
+  enable_memory_efficient_attention: true
+  cpu_offload_reference_model: true  # Keep reference model on CPU
+
 # Experiment tracking
 experiment:
-  name: "one_shot_rlvr_pi1"
-  description: "One-Shot RLVR with pi_1 example from paper"
-  tags: ["one-shot", "rlvr", "math-reasoning", "few-shot"]
+  name: "one_shot_rlvr_pi1_memory_opt"
+  description: "One-Shot RLVR with pi_1 example - memory optimized"
+  tags: ["one-shot", "rlvr", "math-reasoning", "few-shot", "memory-optimized"]
