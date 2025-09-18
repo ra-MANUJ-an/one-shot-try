@@ -1,0 +1,70 @@
+# One-Shot RLVR Configuration
+# Based on "Reinforcement Learning for Reasoning in Large Language Models with One Training Example"
+
+defaults:
+  - _self_
+
+# Data configuration for One-Shot RLVR
+data:
+  # Key One-Shot RLVR parameters
+  num_shots: 1  # Number of training examples (1, 4, 16 from paper)
+  duplicate_factor: 128  # Duplicate examples to fill batches
+  
+  # Dataset configuration
+  train_dataset: one_shot_rlvr  # Special dataset with paper examples
+  train_split: pi1  # π_1 example from paper
+  test_dataset: math500  # Evaluation dataset
+  test_split: test
+  
+  batch_size: 128  # Paper uses 128
+  max_prompt_length: 1024  # Context length
+  num_test_batches: 100
+  
+  train_data_dir: "./data/train"
+  test_data_dir: "./data/test"
+
+# Model configuration
+model:
+  name: 'gemma2-2b-it'  # Can also use qwen3-1.5b for R1-Distill experiments
+  mesh_config: '[[1, 4], ["fsdp", "tp"]]'
+
+# Algorithm parameters (following One-Shot RLVR paper)
+algorithm:
+  total_generation_steps: 768
+  temperature: 0.6  # Paper uses 0.6 for evaluation, 0.9 for training diversity
+  top_p: 0.95  # Paper uses 0.95 (not 1.0 like demo)
+  top_k: 50
+  num_generations: 2  # Generate multiple responses per prompt
+  num_iterations: 1
+  beta: 0.08  # KL divergence penalty
+  epsilon: 0.2  # PPO-style clipping
+
+# Trainer configuration
+trainer:
+  val_before_train: True  # Evaluate before training
+  learning_rate: 3e-6  # Conservative learning rate for few-shot
+  b1: 0.9
+  b2: 0.99
+  weight_decay: 0.1
+  warmup_steps_ratio: 0.1
+  max_grad_norm: 0.1
+  
+  # Training steps calculation: num_batches * num_iterations * epochs
+  num_batches: 64  # Reduced since we're doing few-shot
+  total_epochs: 1
+  
+  # Checkpointing and logging
+  save_freq: 20
+  max_to_keep: 4
+  test_freq: 10
+  
+  checkpoint_dir: "./checkpoints/one_shot_rlvr/"
+  intermediate_ckpt_dir: "./intermediate_ckpt/"
+  metrics_log_dir: "./logs/tensorboard/one_shot_rlvr/"
+  tensorboard_port: 6006
+
+# Experiment tracking
+experiment:
+  name: "one_shot_rlvr_pi1"
+  description: "One-Shot RLVR with pi_1 example from paper"
+  tags: ["one-shot", "rlvr", "math-reasoning", "few-shot"]
