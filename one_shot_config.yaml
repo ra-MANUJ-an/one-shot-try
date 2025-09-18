@@ -25,7 +25,7 @@ data:
 
 # Model configuration
 model:
-  name: 'gemma2-2b-it'  # Can also use qwen3-1.5b for R1-Distill experiments
+  name: 'qwen3-0.6b'  # Can also use qwen3-1.5b for R1-Distill experiments
   mesh_config: '[[1, 4], ["fsdp", "tp"]]'
 
 # Algorithm parameters (following One-Shot RLVR paper)
