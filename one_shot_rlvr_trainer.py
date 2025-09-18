@@ -35,8 +35,8 @@ from utils import *
 from tunix.models.gemma import gemma as gemma_lib
 from tunix.models.gemma import params as gemma_params_lib
 from tunix.examples.data import translation_dataset as data_lib
-# from tunix.models.qwen3 import model as qwen3_lib
-# from tunix.models.qwen3 import params as qwen3_params_lib
+from tunix.models.qwen3 import model as qwen3_lib
+from tunix.models.qwen3 import params as qwen3_params_lib
 from tunix.generate import sampler as sampler_lib
 
 
@@ -124,6 +124,19 @@ class OneShotRLVRTrainer:
         self.eval_every_n_steps = self.cfg.trainer.get("test_freq", 10)
         self.intermediate_ckpt_dir = self.cfg.trainer.get("intermediate_ckpt_dir", "./intermediate_ckpt/")
 
+    # def _setup_model_configs(self):
+    #     """Setup model-specific configurations."""
+    #     self.model_configs = {
+    #         "gemma2-2b-it": {
+    #             "kaggle_path": "google/gemma-2/flax/gemma2-2b-it",
+    #             "config_fn": gemma_lib.TransformerConfig.gemma2_2b,
+    #             "model_class": gemma_lib.Transformer,
+    #             "params_loader": gemma_params_lib.load_and_format_params,
+    #             "tokenizer_class": data_lib.GemmaTokenizer,
+    #             "tokenizer_path": "./tokenizers/tokenizer_gemma2.model",
+    #             "huggingface_name": "google/gemma-2-2b-it"
+    #         }
+    #     }
     def _setup_model_configs(self):
         """Setup model-specific configurations."""
         self.model_configs = {
@@ -135,9 +148,17 @@ class OneShotRLVRTrainer:
                 "tokenizer_class": data_lib.GemmaTokenizer,
                 "tokenizer_path": "./tokenizers/tokenizer_gemma2.model",
                 "huggingface_name": "google/gemma-2-2b-it"
-            }
+            },
+            "qwen3-0.6b": {
+                "kaggle_path": "qwen-lm/qwen-3/transformers/0.6b",
+                "config_fn": qwen3_lib.ModelConfig.qwen3_0_6b,  
+                "model_class": qwen3_lib.Qwen3,
+                "params_loader": qwen3_params_lib.create_model_from_safe_tensors,
+                "tokenizer_class": "transformers",  
+                "tokenizer_path": None,
+                "huggingface_name": "Qwen/Qwen3-0.6B"
+            },
         }
-
     def create_one_shot_dataloaders(self):
         """
         Create dataloaders for One-Shot RLVR.
