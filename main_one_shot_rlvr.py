@@ -43,7 +43,7 @@ def start_tensorboard(logdir, port=6006):
         print(f"tensorboard --logdir {logdir} --port {port}")
         return None
 
-@hydra.main(version_base=None, config_path="configs", config_name="one_shot_config")
+@hydra.main(version_base=None, config_path="", config_name="one_shot_config")
 def main(cfg: DictConfig) -> None:
     """Main One-Shot RLVR training function"""
     
