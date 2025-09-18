@@ -341,7 +341,8 @@ class OneShotRLVRTrainer:
             )
             model = config["model_class"].from_params(params, version=self.model_name.replace("gemma", ""))
             os.makedirs(self.intermediate_ckpt_dir, exist_ok=True)
-            ckpt_path = os.path.join(self.intermediate_ckpt_dir, "state")
+            ckpt_path = os.path.abspath(os.path.join(self.intermediate_ckpt_dir, "state"))
+            os.makedirs(os.path.dirname(ckpt_path), exist_ok=True)
             checkpointer = ocp.StandardCheckpointer()
             _, state = nnx.split(model)
             if not os.path.exists(ckpt_path):
