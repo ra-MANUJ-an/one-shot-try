@@ -19,7 +19,7 @@ python3 -m main_one_shot_rlvr \
   data.test_split=test \
   data.batch_size=128 \
   data.max_prompt_length=1024 \
-  model.name='gemma2-2b-it' \
+  model.name='qwen3-0.6b' \
   model.mesh_config='[[1, 4], ["fsdp", "tp"]]' \
   algorithm.temperature=0.6 \
   algorithm.top_p=0.95 \
@@ -29,6 +29,6 @@ python3 -m main_one_shot_rlvr \
   trainer.checkpoint_dir=./checkpoints/one_shot_rlvr/pi1/ \
   trainer.intermediate_ckpt_dir=./intermediate_ckpt/ \
   trainer.metrics_log_dir=./logs/tensorboard/one_shot_rlvr/pi1/ \
-  experiment.name="one_shot_rlvr_pi1_gemma2_2b"
+  experiment.name="one_shot_rlvr_pi1_qwen3-0.6b"
 
 echo "One-Shot RLVR training completed!"
