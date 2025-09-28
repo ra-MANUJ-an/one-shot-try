@@ -1,0 +1,15 @@
+kagglehub
+huggingface_hub
+ipywidgets
+hydra-core
+tensorflow
+tensorflow_datasets
+tensorboardX
+transformers
+grain
+git+https://github.com/google/tunix.git
+git+https://github.com/google/qwix.git
+git+https://github.com/google/flax.git
+datasets
+sympy
+pylatexenc
