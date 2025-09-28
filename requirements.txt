@@ -7,9 +7,9 @@ tensorflow_datasets
 tensorboardX
 transformers
 grain
-git+https://github.com/google/tunix.git
-git+https://github.com/google/qwix.git
-git+https://github.com/google/flax.git
+git+https://github.com/google/tunix.git --no-deps
+git+https://github.com/google/qwix.git --no-deps
+git+https://github.com/google/flax.git#egg=flax
 datasets
 sympy
 pylatexenc
