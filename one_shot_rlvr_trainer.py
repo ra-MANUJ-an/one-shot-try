@@ -32,9 +32,9 @@ from omegaconf import DictConfig, OmegaConf
 from datasets import load_dataset
 from transformers import AutoTokenizer
 from utils import *
-from tunix.models.gemma import gemma as gemma_lib
-from tunix.models.gemma import params as gemma_params_lib
-from tunix.examples.data import translation_dataset as data_lib
+# from tunix.models.gemma import gemma as gemma_lib
+# from tunix.models.gemma import params as gemma_params_lib
+# from tunix.examples.data import translation_dataset as data_lib
 from tunix.models.qwen3 import model as qwen3_lib
 from tunix.models.qwen3 import params as qwen3_params_lib
 from tunix.generate import sampler as sampler_lib
@@ -142,10 +142,10 @@ class OneShotRLVRTrainer:
         self.model_configs = {
             "gemma2-2b-it": {
                 "kaggle_path": "google/gemma-2/flax/gemma2-2b-it",
-                "config_fn": gemma_lib.TransformerConfig.gemma2_2b,
-                "model_class": gemma_lib.Transformer,
-                "params_loader": gemma_params_lib.load_and_format_params,
-                "tokenizer_class": data_lib.GemmaTokenizer,
+                # "config_fn": gemma_lib.TransformerConfig.gemma2_2b,
+                # "model_class": gemma_lib.Transformer,
+                # "params_loader": gemma_params_lib.load_and_format_params,
+                # "tokenizer_class": data_lib.GemmaTokenizer,
                 "tokenizer_path": "./tokenizers/tokenizer_gemma2.model",
                 "huggingface_name": "google/gemma-2-2b-it"
             },
@@ -565,8 +565,118 @@ class OneShotRLVRTrainer:
 
         return self.grpo_learner
 
+    # def evaluate(self, temperature=0.6, top_k=50, top_p=0.95, num_passes=1):
+    #     """Evaluate model using One-Shot RLVR evaluation protocol."""
+    #     corr = 0
+    #     total = 0
+        
+    #     for batch in tqdm(self.test_dataset):
+    #         answers = batch["answer"]
+    #         questions = batch["question"]
+            
+    #         multiple_call_responses = [[] for _ in range(len(questions))]
+    #         for p in range(num_passes):
+    #             responses = self.generate(
+    #                 questions, self.sampler, temperature, top_k, top_p, seed=p
+    #             )
+    #             for idx, response in enumerate(responses):
+    #                 multiple_call_responses[idx].append(response)
+
+    #         for question, multiple_call_response, answer in zip(
+    #             questions, multiple_call_responses, answers
+    #         ):
+    #             corr_per_question = 0
+    #             for response in multiple_call_response:
+    #                 # Use the sophisticated evaluation from the paper
+    #                 score = compute_score_one_shot_rlvr(response, answer)
+    #                 if score > 0:
+    #                     corr_per_question = 1
+    #                     break
+
+    #             if corr_per_question > 0:
+    #                 corr += 1
+
+    #             total += 1
+    #             if total % 10 == 0:
+    #                 print(f"Progress: {corr}/{total} = {corr / total * 100:.2f}%")
+        
+    #     accuracy = corr / total * 100 if total > 0 else 0
+    #     return corr, total, accuracy
+    # def evaluate(self, temperature=0.6, top_k=50, top_p=0.95, num_passes=1):
+    #     """Evaluate model using One-Shot RLVR evaluation protocol."""
+        
+    #     # Create a new sampler with appropriate cache size for evaluation
+    #     eval_cache_config = sampler_lib.CacheConfig(
+    #         cache_size=1024,  # Larger cache for evaluation
+    #         num_layers=self.model_config.num_layers,
+    #         num_kv_heads=self.model_config.num_kv_heads,
+    #         head_dim=self.model_config.head_dim,
+    #     )
+        
+    #     eval_sampler = sampler_lib.Sampler(
+    #         transformer=self.policy_model,
+    #         tokenizer=self.tokenizer,
+    #         cache_config=eval_cache_config,
+    #     )
+        
+    #     corr = 0
+    #     total = 0
+        
+    #     for batch in tqdm(self.test_dataset):
+    #         answers = batch["answer"]
+    #         questions = batch["question"]
+            
+    #         multiple_call_responses = [[] for _ in range(len(questions))]
+    #         for p in range(num_passes):
+    #             # Use eval_sampler instead of self.sampler
+    #             responses = self.generate(
+    #                 questions, 
+    #                 eval_sampler,  # Changed here
+    #                 temperature, 
+    #                 top_k, 
+    #                 top_p, 
+    #                 seed=p
+    #             )
+    #             for idx, response in enumerate(responses):
+    #                 multiple_call_responses[idx].append(response)
+
+    #         for question, multiple_call_response, answer in zip(
+    #             questions, multiple_call_responses, answers
+    #         ):
+    #             corr_per_question = 0
+    #             for response in multiple_call_response:
+    #                 score = compute_score_one_shot_rlvr(response, answer)
+    #                 if score > 0:
+    #                     corr_per_question = 1
+    #                     break
+
+    #             if corr_per_question > 0:
+    #                 corr += 1
+
+    #             total += 1
+    #             if total % 10 == 0:
+    #                 print(f"Progress: {corr}/{total} = {corr / total * 100:.2f}%")
+        
+    #     accuracy = corr / total * 100 if total > 0 else 0
+    #     return corr, total, accuracy
+
     def evaluate(self, temperature=0.6, top_k=50, top_p=0.95, num_passes=1):
         """Evaluate model using One-Shot RLVR evaluation protocol."""
+        
+        # Use larger cache for evaluation
+        eval_cache_config = sampler_lib.CacheConfig(
+            cache_size=2048,  # Even larger cache
+            num_layers=self.model_config.num_layers,
+            num_kv_heads=self.model_config.num_kv_heads,
+            head_dim=self.model_config.head_dim,
+        )
+        
+        eval_sampler = sampler_lib.Sampler(
+            transformer=self.policy_model,
+            tokenizer=self.tokenizer,
+            cache_config=eval_cache_config,
+        )
+        
         corr = 0
         total = 0
         
@@ -574,34 +684,62 @@ class OneShotRLVRTrainer:
             answers = batch["answer"]
             questions = batch["question"]
             
-            multiple_call_responses = [[] for _ in range(len(questions))]
-            for p in range(num_passes):
-                responses = self.generate(
-                    questions, self.sampler, temperature, top_k, top_p, seed=p
-                )
-                for idx, response in enumerate(responses):
-                    multiple_call_responses[idx].append(response)
-
-            for question, multiple_call_response, answer in zip(
-                questions, multiple_call_responses, answers
-            ):
+            # PROCESS ONE QUESTION AT A TIME instead of batch
+            for i, (question, answer) in enumerate(zip(questions, answers)):
+                multiple_responses = []
+                for p in range(num_passes):
+                    # Generate one question at a time
+                    response = self.generate(
+                        question,  # Single question, not list
+                        eval_sampler,
+                        temperature,
+                        top_k,
+                        top_p,
+                        seed=p
+                    )
+                    multiple_responses.append(response)
+                
+                # Check if any response is correct
                 corr_per_question = 0
-                for response in multiple_call_response:
-                    # Use the sophisticated evaluation from the paper
+                for response in multiple_responses:
                     score = compute_score_one_shot_rlvr(response, answer)
                     if score > 0:
                         corr_per_question = 1
                         break
-
+                
                 if corr_per_question > 0:
                     corr += 1
-
+                
                 total += 1
                 if total % 10 == 0:
                     print(f"Progress: {corr}/{total} = {corr / total * 100:.2f}%")
         
         accuracy = corr / total * 100 if total > 0 else 0
         return corr, total, accuracy
+
+    # def generate(self, question, sampler, temperature=0.6, top_k=50, top_p=0.95, seed=None):
+    #     """Generate responses using the model."""
+    #     if isinstance(question, str):
+    #         input_batch = [format_prompt_with_chat_template(self.hf_tokenizer, question)]
+    #     else:
+    #         input_batch = [format_prompt_with_chat_template(self.hf_tokenizer, q) for q in question]
+
+    #     max_gen_steps = min(self.total_generation_steps, 512)
+
+    #     out_data = sampler(
+    #         input_strings=input_batch,
+    #         max_generation_steps=512,
+    #         temperature=temperature,
+    #         top_k=top_k,
+    #         top_p=top_p,
+    #         echo=False,
+    #         seed=jax.random.PRNGKey(seed) if seed is not None else None,
+    #     )
+
+    #     output = out_data.text
+    #     if isinstance(question, str):
+    #         return output[0]
+    #     return output
 
     def generate(self, question, sampler, temperature=0.6, top_k=50, top_p=0.95, seed=None):
         """Generate responses using the model."""
@@ -610,8 +748,19 @@ class OneShotRLVRTrainer:
         else:
             input_batch = [format_prompt_with_chat_template(self.hf_tokenizer, q) for q in question]
 
+        # DEBUG: Check prompt lengths
+        prompt_lengths = [len(self.hf_tokenizer.encode(prompt)) for prompt in input_batch]
+        max_prompt_len = max(prompt_lengths)
+        # print(f"DEBUG: Max prompt length: {max_prompt_len} tokens")
+        # print(f"DEBUG: Cache size: 1024, Available for generation: {1024 - max_prompt_len}")
+        
+        # Calculate safe generation length
+        safe_gen_length = min(512, 1024 - max_prompt_len - 50)  # Leave 50 token buffer
+        # print(f"DEBUG: Using generation length: {safe_gen_length}")
+
         out_data = sampler(
             input_strings=input_batch,
+            max_generation_steps=safe_gen_length,  # Use calculated safe length
             temperature=temperature,
             top_k=top_k,
             top_p=top_p,
@@ -623,7 +772,6 @@ class OneShotRLVRTrainer:
         if isinstance(question, str):
             return output[0]
         return output
-
 
 # One-Shot RLVR Reward Function (based on the paper)
 def one_shot_rlvr_reward_function(prompts, completions, answer, **kwargs):
