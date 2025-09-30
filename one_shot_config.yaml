@@ -1,4 +1,4 @@
-# One-Shot RLVR Configuration - Memory Optimized
+# One-Shot RLVR Configuration
 # Based on "Reinforcement Learning for Reasoning in Large Language Models with One Training Example"
 defaults:
   - _self_
