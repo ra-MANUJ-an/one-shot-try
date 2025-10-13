@@ -17,7 +17,6 @@ from tunix.models.qwen2 import params as qwen2_params_lib
 from tunix.generate import sampler as sampler_lib
 from utils import (
     format_prompt_with_chat_template,
-    format_prompt_with_chat_template_,
     format_prompt_with_template,
     extract_answer,
     grade_answer_mathd,
@@ -30,12 +29,7 @@ import re
 def extract_answer_robust(passage: str) -> str:
     if not passage:
         return None
-    
-    from utils import extract_answer
-    standard_answer = extract_answer(passage)
-    if standard_answer:
-        return standard_answer
-    
+        
     # Pattern 1: Look for \boxed{...} with proper matching braces
     # This handles nested braces like \boxed{\frac{1}{2}}
     stack = []
