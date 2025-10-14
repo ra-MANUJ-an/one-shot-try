@@ -94,7 +94,7 @@ def extract_answer_robust(passage: str) -> str:
 class Qwen25MathEvaluator:
     def __init__(
         self,
-        model_path: str = "Qwen/Qwen2.5-7B-Instruct",
+        model_path: str = "Qwen/Qwen2.5-1.5B-Instruct",
         mesh_config=None,
         max_prompt_length: int = 1024,  # Increased from 512
         max_generation_steps: int = 1024,  # Increased from 512
@@ -112,7 +112,7 @@ class Qwen25MathEvaluator:
         self.sampler = None
         self.model_config = None
         
-        print(f"Initializing Qwen2.5-Math-7B evaluator")
+        print(f"Initializing Qwen2.5-Math-1.5B evaluator")
         print(f"Model path: {model_path}")
         print(f"Mesh config: {mesh_config}")
         print(f"Available devices: {jax.devices()}")
@@ -127,7 +127,7 @@ class Qwen25MathEvaluator:
         )
         
         print("Setting up model config...")
-        self.model_config = qwen2_lib.ModelConfig.qwen2_5_7b()
+        self.model_config = qwen2_lib.ModelConfig.qwen2_5_1_5b()
         
         print(f"Downloading model files for {self.model_path}...")
         local_model_path = snapshot_download(repo_id=self.model_path)
@@ -190,27 +190,27 @@ class Qwen25MathEvaluator:
             #     "<|im_start|>assistant\n"
             # )
 
+            # prompt = self.tokenizer.apply_chat_template(
+            #     [
+            #         {"role": "system", "content": "Please reason step by step, and put your final answer within \\boxed{}."},
+            #         {"role": "user", "content": question},
+            #     ],
+            #     tokenize=False,
+            #     add_generation_prompt=True,
+            # )
+
             prompt = self.tokenizer.apply_chat_template(
                 [
-                    {"role": "system", "content": "Please reason step by step, and put your final answer within \\boxed{}."},
+                    {"role": "system", "content": (
+                        "Please reason step by step. "
+                        "Your final answer must appear inside \\boxed{...} and nothing else."
+                    )},
                     {"role": "user", "content": question},
                 ],
                 tokenize=False,
                 add_generation_prompt=True,
             )
-
-            # prompt = self.tokenizer.apply_chat_template(
-            #     [
-            #         {"role": "system", "content": (
-            #             "Please reason step by step. "
-            #             "Your final answer must appear inside \\boxed{...} and nothing else."
-            #         )},
-            #         {"role": "user", "content": question},
-            #     ],
-            #     tokenize=False,
-            #     add_generation_prompt=False,
-            # )
-            prompt += "\nAnswer: "
+            # prompt += "\nAnswer: "
 
             
             return {
@@ -404,9 +404,9 @@ class Qwen25MathEvaluator:
 
 def main():
     print("=" * 60)
-    print("Qwen2.5-Math-7B Evaluation on MATH500")
+    print("Qwen2.5-Math-1.5B Evaluation on MATH500")
     print("=" * 60)
-    model_path = "Qwen/Qwen2.5-Math-7B"
+    model_path = "Qwen/Qwen2.5-1.5B-Instruct"
     mesh_config = [[1, 4], ["fsdp", "tp"]]  # 4-way tensor parallelism
     evaluator = Qwen25MathEvaluator(
         model_path=model_path,
@@ -439,7 +439,7 @@ def main():
     print("=" * 60)
     
     import json
-    output_file = "qwen25_math_7b_eval_results.json"
+    output_file = "qwen25_math_1_5b_eval_results.json"
     with open(output_file, 'w') as f:
         save_results = {k: v for k, v in results.items() if k != "detailed_results"}
         json.dump(save_results, f, indent=2)
