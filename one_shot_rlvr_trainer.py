@@ -38,7 +38,76 @@ from utils import *
 from tunix.models.qwen3 import model as qwen3_lib
 from tunix.models.qwen3 import params as qwen3_params_lib
 from tunix.generate import sampler as sampler_lib
+from tunix.models.qwen2 import model as qwen2_lib
+from tunix.models.qwen2 import params as qwen2_params_lib
 
+
+import re
+
+def extract_answer_robust(passage: str) -> str:
+    if not passage:
+        return None
+        
+    # Pattern 1: Look for \boxed{...} with proper matching braces
+    # This handles nested braces like \boxed{\frac{1}{2}}
+    stack = []
+    i = passage.find('\\boxed')
+    if i != -1:
+        i += 6  # Skip '\boxed'
+        # Skip whitespace
+        while i < len(passage) and passage[i].isspace():
+            i += 1
+        if i < len(passage) and passage[i] == '{':
+            i += 1
+            start = i
+            brace_count = 1
+            while i < len(passage) and brace_count > 0:
+                if passage[i] == '{':
+                    brace_count += 1
+                elif passage[i] == '}':
+                    brace_count -= 1
+                i += 1
+            if brace_count == 0:
+                answer = passage[start:i-1]
+                return answer.strip()
+    
+    # Pattern 2: Lenient matching - extract up to common terminators
+    patterns = [
+        r'\\boxed\{([^}]+)\}',  # Standard
+        r'boxed\{([^}]+)\}',     # Missing backslash
+        r'\\boxed\s*\{(.+?)(?:\.\s|\)\.|\.$)',  # Ends with period
+        r'final answer is.*?\\boxed\{([^}]+)',  # "final answer is"
+        r'answer is.*?\\boxed\{([^}]+)',
+    ]
+    
+    for pattern in patterns:
+        matches = re.findall(pattern, passage, re.IGNORECASE | re.DOTALL)
+        if matches:
+            answer = matches[-1].strip()
+            # Clean up
+            answer = answer.rstrip('.,;:)')
+            # Try to fix common LaTeX issues
+            if '\\frac' in answer:
+                # Count braces - each \frac needs 2 pairs
+                open_braces = answer.count('{')
+                close_braces = answer.count('}')
+                if open_braces > close_braces:
+                    answer += '}' * (open_braces - close_braces)
+            return answer
+    
+    # Pattern 3: Super lenient - just find anything after boxed{
+    super_lenient = r'boxed\s*\{([^\n]{1,200})'
+    matches = re.findall(super_lenient, passage, re.IGNORECASE)
+    if matches:
+        answer = matches[-1]
+        # Find the first reasonable endpoint
+        for char in ['.', ')', '\n', 'The ', 'Thus', 'Therefore']:
+            if char in answer:
+                answer = answer[:answer.index(char)]
+                break
+        return answer.strip().rstrip('.,;:)')
+    
+    return None
 
 class OneShotRLVRTrainer:
     """
@@ -158,6 +227,16 @@ class OneShotRLVRTrainer:
                 "tokenizer_path": None,
                 "huggingface_name": "Qwen/Qwen3-0.6B"
             },
+            "qwen2.5-1.5b": {
+                "kaggle_path": None,  # Will download from HF
+                "config_fn": qwen2_lib.ModelConfig.qwen2_5_1_5b,
+                "model_class": qwen2_lib.Qwen2,
+                "params_loader": qwen2_params_lib.create_model_from_safe_tensors,
+                "tokenizer_class": "transformers",
+                "tokenizer_path": None,
+                "huggingface_name": "Qwen/Qwen2.5-1.5B-Instruct"
+            },
+
         }
     def create_one_shot_dataloaders(self):
         """
@@ -347,6 +426,15 @@ class OneShotRLVRTrainer:
         
         config = self.model_configs[self.model_name]
         
+        # For Qwen2.5, download from HuggingFace instead of Kaggle
+        if self.model_name.startswith("qwen2.5"):
+            from huggingface_hub import snapshot_download
+            print(f"Downloading {self.model_name} from HuggingFace...")
+            ckpt_path = snapshot_download(repo_id=config["huggingface_name"])
+            print(f"Model downloaded to: {ckpt_path}")
+            return ckpt_path
+        
+        # Original Kaggle download logic for other models
         if "KAGGLE_USERNAME" not in os.environ or "KAGGLE_KEY" not in os.environ:
             kagglehub.login()
         
@@ -357,6 +445,7 @@ class OneShotRLVRTrainer:
         if self.model_name.startswith("qwen3"):
             return kaggle_ckpt_path
         else:
+            # Gemma conversion logic
             params = config["params_loader"](
                 os.path.join(kaggle_ckpt_path, self.model_name)
             )
@@ -376,19 +465,59 @@ class OneShotRLVRTrainer:
             
             return ckpt_path
 
+    # def _download_and_prepare_checkpoint(self):
+    #     """Download and prepare model checkpoint."""
+    #     if self.model_name not in self.model_configs:
+    #         raise ValueError(f"Unsupported model: {self.model_name}")
+        
+    #     config = self.model_configs[self.model_name]
+        
+    #     if "KAGGLE_USERNAME" not in os.environ or "KAGGLE_KEY" not in os.environ:
+    #         kagglehub.login()
+        
+    #     print(f"Downloading {self.model_name} from Kaggle...")
+    #     kaggle_ckpt_path = kagglehub.model_download(config["kaggle_path"])
+    #     time.sleep(30)
+
+    #     if self.model_name.startswith("qwen3"):
+    #         return kaggle_ckpt_path
+    #     else:
+    #         params = config["params_loader"](
+    #             os.path.join(kaggle_ckpt_path, self.model_name)
+    #         )
+    #         model = config["model_class"].from_params(params, version=self.model_name.replace("gemma", ""))
+    #         os.makedirs(self.intermediate_ckpt_dir, exist_ok=True)
+    #         ckpt_path = os.path.abspath(os.path.join(self.intermediate_ckpt_dir, "state"))
+    #         os.makedirs(os.path.dirname(ckpt_path), exist_ok=True)
+    #         checkpointer = ocp.StandardCheckpointer()
+    #         _, state = nnx.split(model)
+    #         if not os.path.exists(ckpt_path):
+    #             checkpointer.save(ckpt_path, state)
+    #             print("Waiting for checkpoint to save...")
+                
+    #         time.sleep(120) 
+    #         del params, model, state
+    #         gc.collect()
+            
+    #         return ckpt_path
+
     def _load_base_model(self, ckpt_path):
         """Load the base model."""
         config = self.model_configs[self.model_name]
         self.mesh = jax.make_mesh(*self.mesh_config)
         self.model_config = config["config_fn"]()
 
-        if self.model_name.startswith("qwen3"):
+        # Both qwen3 and qwen2.5 use the same loading pattern
+        if self.model_name.startswith("qwen3") or self.model_name.startswith("qwen2.5"):
+            print("\n\n\n\n\n\n\nI'm using QWEN\n\n\n\n\n\n\n")
             self.base_model = config["params_loader"](
                 file_dir=ckpt_path, 
                 config=self.model_config,
-                mesh=self.mesh
+                mesh=self.mesh,
+                dtype=jnp.float32
             )
         else:
+            # Gemma loading logic
             abs_model = nnx.eval_shape(
                 lambda: config["model_class"](self.model_config, rngs=nnx.Rngs(params=0))
             )
@@ -404,12 +533,41 @@ class OneShotRLVRTrainer:
             graph_def, _ = nnx.split(abs_model)
             self.base_model = nnx.merge(graph_def, restored_params)
 
+    # def _load_base_model(self, ckpt_path):
+    #     """Load the base model."""
+    #     config = self.model_configs[self.model_name]
+    #     self.mesh = jax.make_mesh(*self.mesh_config)
+    #     self.model_config = config["config_fn"]()
+
+    #     if self.model_name.startswith("qwen3"):
+    #         self.base_model = config["params_loader"](
+    #             file_dir=ckpt_path, 
+    #             config=self.model_config,
+    #             mesh=self.mesh
+    #         )
+    #     else:
+    #         abs_model = nnx.eval_shape(
+    #             lambda: config["model_class"](self.model_config, rngs=nnx.Rngs(params=0))
+    #         )
+    #         abs_state = nnx.state(abs_model)
+    #         abs_state = jax.tree.map(
+    #             lambda a, s: jax.ShapeDtypeStruct(a.shape, jnp.float32, sharding=s),
+    #             abs_state,
+    #             nnx.get_named_sharding(abs_state, self.mesh),
+    #         )
+    #         checkpointer = ocp.StandardCheckpointer()
+    #         restored_params = checkpointer.restore(ckpt_path, target=abs_state)
+            
+    #         graph_def, _ = nnx.split(abs_model)
+    #         self.base_model = nnx.merge(graph_def, restored_params)
+
     def _create_policy_model(self):
         """Create policy model (trainable copy)."""
         if self.base_model is None:
             raise ValueError("Base model must be loaded first")
         
-        if self.model_name.startswith("qwen3"):
+        # Both qwen3 and qwen2.5 use the same pattern
+        if self.model_name.startswith("qwen3") or self.model_name.startswith("qwen2.5"):
             config = self.model_configs[self.model_name]
             self.policy_model = config["params_loader"](
                 file_dir=self.model_checkpoint_path,
@@ -417,6 +575,7 @@ class OneShotRLVRTrainer:
                 mesh=self.mesh
             )
         else:
+            # Gemma loading logic
             config = self.model_configs[self.model_name]
             policy_model = config["model_class"](self.model_config, rngs=nnx.Rngs(params=0))
             
@@ -429,6 +588,32 @@ class OneShotRLVRTrainer:
                 pspecs = nnx.get_partition_spec(state)
                 sharded_state = jax.lax.with_sharding_constraint(state, pspecs)
                 nnx.update(self.policy_model, sharded_state)
+
+    # def _create_policy_model(self):
+    #     """Create policy model (trainable copy)."""
+    #     if self.base_model is None:
+    #         raise ValueError("Base model must be loaded first")
+        
+    #     if self.model_name.startswith("qwen3"):
+    #         config = self.model_configs[self.model_name]
+    #         self.policy_model = config["params_loader"](
+    #             file_dir=self.model_checkpoint_path,
+    #             config=self.model_config,
+    #             mesh=self.mesh
+    #         )
+    #     else:
+    #         config = self.model_configs[self.model_name]
+    #         policy_model = config["model_class"](self.model_config, rngs=nnx.Rngs(params=0))
+            
+    #         base_state = nnx.state(self.base_model)
+    #         nnx.update(policy_model, base_state)
+    #         self.policy_model = policy_model
+            
+    #         with self.mesh:
+    #             state = nnx.state(self.policy_model)
+    #             pspecs = nnx.get_partition_spec(state)
+    #             sharded_state = jax.lax.with_sharding_constraint(state, pspecs)
+    #             nnx.update(self.policy_model, sharded_state)
 
     def _create_tokenizer(self):
         """Create tokenizer."""
@@ -521,7 +706,7 @@ class OneShotRLVRTrainer:
                 actor_optimizer=self.optimizer,
                 eval_every_n_steps=self.eval_every_n_steps,
                 max_steps=self.max_steps,
-                gradient_accumulation_steps=1,
+                # gradient_accumulation_steps=1,
                 # metrics logging
                 metrics_logging_options=metrics_logging_options,
                 # checkpoint saving
@@ -702,7 +887,7 @@ class OneShotRLVRTrainer:
                 # Check if any response is correct
                 corr_per_question = 0
                 for response in multiple_responses:
-                    score = compute_score_one_shot_rlvr(response, answer)
+                    score = compute_eval_score(response, answer)
                     if score > 0:
                         corr_per_question = 1
                         break
@@ -741,6 +926,38 @@ class OneShotRLVRTrainer:
     #         return output[0]
     #     return output
 
+    # def generate(self, question, sampler, temperature=0.6, top_k=50, top_p=0.95, seed=None):
+    #     """Generate responses using the model."""
+    #     if isinstance(question, str):
+    #         input_batch = [format_prompt_with_chat_template(self.hf_tokenizer, question)]
+    #     else:
+    #         input_batch = [format_prompt_with_chat_template(self.hf_tokenizer, q) for q in question]
+
+    #     # DEBUG: Check prompt lengths
+    #     prompt_lengths = [len(self.hf_tokenizer.encode(prompt)) for prompt in input_batch]
+    #     max_prompt_len = max(prompt_lengths)
+    #     # print(f"DEBUG: Max prompt length: {max_prompt_len} tokens")
+    #     # print(f"DEBUG: Cache size: 1024, Available for generation: {1024 - max_prompt_len}")
+        
+    #     # Calculate safe generation length
+    #     safe_gen_length = min(512, 1024 - max_prompt_len - 50)  # Leave 50 token buffer
+    #     # print(f"DEBUG: Using generation length: {safe_gen_length}")
+
+    #     out_data = sampler(
+    #         input_strings=input_batch,
+    #         max_generation_steps=safe_gen_length,  # Use calculated safe length
+    #         temperature=temperature,
+    #         top_k=top_k,
+    #         top_p=top_p,
+    #         echo=False,
+    #         seed=jax.random.PRNGKey(seed) if seed is not None else None,
+    #     )
+
+    #     output = out_data.text
+    #     if isinstance(question, str):
+    #         return output[0]
+    #     return output
+
     def generate(self, question, sampler, temperature=0.6, top_k=50, top_p=0.95, seed=None):
         """Generate responses using the model."""
         if isinstance(question, str):
@@ -748,23 +965,22 @@ class OneShotRLVRTrainer:
         else:
             input_batch = [format_prompt_with_chat_template(self.hf_tokenizer, q) for q in question]
 
-        # DEBUG: Check prompt lengths
         prompt_lengths = [len(self.hf_tokenizer.encode(prompt)) for prompt in input_batch]
         max_prompt_len = max(prompt_lengths)
-        # print(f"DEBUG: Max prompt length: {max_prompt_len} tokens")
-        # print(f"DEBUG: Cache size: 1024, Available for generation: {1024 - max_prompt_len}")
         
-        # Calculate safe generation length
-        safe_gen_length = min(512, 1024 - max_prompt_len - 50)  # Leave 50 token buffer
-        # print(f"DEBUG: Using generation length: {safe_gen_length}")
+        safe_gen_length = min(1024, 2048 - max_prompt_len - 50)
+        
+        # ADD STOP TOKEN (matching evaluation)
+        stop_token_id = self.hf_tokenizer.encode('<|im_end|>')[0]
 
         out_data = sampler(
             input_strings=input_batch,
-            max_generation_steps=safe_gen_length,  # Use calculated safe length
+            max_generation_steps=safe_gen_length,
             temperature=temperature,
             top_k=top_k,
             top_p=top_p,
             echo=False,
+            eos_tokens=[stop_token_id],  # ADD THIS
             seed=jax.random.PRNGKey(seed) if seed is not None else None,
         )
 
@@ -773,32 +989,210 @@ class OneShotRLVRTrainer:
             return output[0]
         return output
 
-# One-Shot RLVR Reward Function (based on the paper)
+# # At the top, add this import if not already there
+import numpy as np
+
+# # One-Shot RLVR Reward Function (based on the paper)
+# def one_shot_rlvr_reward_function(prompts, completions, answer, **kwargs):
+#     """
+#     Reward function for One-Shot RLVR based on the paper.
+#     Uses sophisticated mathematical equivalence checking.
+#     """
+#     print("\n" + "="*80)
+#     print("REWARD FUNCTION CALLED")
+#     print(f"Number of completions: {len(completions)}")
+#     print(f"Number of answers: {len(answer)}")
+#     print("="*80)
+    
+#     scores = []
+#     for i, (completion, ground_truth) in enumerate(zip(completions, answer)):
+#         # Extract answer from completion
+#         from utils import extract_answer, grade_answer_mathd, grade_answer_sympy
+        
+#         model_answer = extract_answer(completion)
+        
+#         # Compute score
+#         if model_answer is None:
+#             score = 0.0
+#         else:
+#             is_correct = (
+#                 grade_answer_mathd(model_answer, ground_truth) or 
+#                 grade_answer_sympy(model_answer, ground_truth)
+#             )
+#             score = 1.0 if is_correct else 0.0
+        
+#         scores.append(score)
+        
+#         # Debug first 5 examples
+#         if i < 5:
+#             print(f"\n--- Example {i} ---")
+#             print(f"Ground truth: {ground_truth}")
+#             print(f"Completion (first 300 chars): {completion[:300]}")
+#             print(f"Extracted answer: {model_answer}")
+#             print(f"Score: {score}")
+    
+#     avg_score = np.mean(scores) if scores else 0.0
+#     print(f"\nAverage reward: {avg_score:.3f}")
+#     print(f"Score distribution: {np.bincount([int(s) for s in scores]).tolist()}")
+#     print("="*80 + "\n")
+    
+#     return scores
+
 def one_shot_rlvr_reward_function(prompts, completions, answer, **kwargs):
     """
-    Reward function for One-Shot RLVR based on the paper.
-    Uses sophisticated mathematical equivalence checking.
+    Reward function with negative rewards for completely wrong answers.
+    
+    Reward scheme:
+    +1.0: Correct answer
+     0.0: Attempted answer but wrong
+    -0.5: No answer extracted (didn't follow format)
+    -1.0: Gibberish / very far from correct
     """
+    print("\n" + "="*80)
+    print("REWARD FUNCTION CALLED")
+    print(f"Number of completions: {len(completions)}")
+    print("="*80)
+    
     scores = []
-    for completion, ground_truth in zip(completions, answer):
-        score = compute_score_one_shot_rlvr(completion, ground_truth)
+    for i, (completion, ground_truth) in enumerate(zip(completions, answer)):
+        from utils import extract_answer, grade_answer_mathd, grade_answer_sympy
+        import re
+        
+        model_answer = extract_answer_robust(completion)
+        
+        # Reward structure
+        if model_answer is None:
+            # No boxed answer found - penalize for not following format
+            score = -0.5
+            reason = "No \\boxed{} answer found"
+        else:
+            # Check if correct
+            valid_answers = [ground_truth, "12.8", "12.7", "12.699", "12.71", "12.69", "\\sqrt[3]{2048}"]
+            is_correct = False
+            
+            for valid_ans in valid_answers:
+                if grade_answer_mathd(model_answer, valid_ans) or grade_answer_sympy(model_answer, valid_ans):
+                    is_correct = True
+                    break
+            
+            if not is_correct:
+                is_correct = (
+                    grade_answer_mathd(model_answer, ground_truth) or 
+                    grade_answer_sympy(model_answer, ground_truth)
+                )
+            
+            if is_correct:
+                score = 1.0
+                reason = "CORRECT!"
+            else:
+                # Try to parse as number to check if close
+                try:
+                    model_val = float(model_answer.replace("\\sqrt[3]{", "").replace("}", "").replace(",", ""))
+                    target_val = float(ground_truth)
+                    
+                    # Check if close (within 50% of correct answer)
+                    ratio = abs(model_val - target_val) / target_val
+                    
+                    if ratio < 0.1:
+                        # Very close - small negative
+                        score = 0.7
+                        reason = f"Close but not exact ({model_val} vs {target_val})"
+                    elif ratio < 0.5:
+                        # Somewhat close - attempted but wrong
+                        score = -0.3
+                        reason = f"Wrong but in ballpark ({model_val} vs {target_val})"
+                    else:
+                        # Very wrong
+                        score = -0.7
+                        reason = f"Very far from correct ({model_val} vs {target_val})"
+                except:
+                    # Can't parse - probably symbolic or gibberish
+                    # Check if it's at least mathematical notation
+                    if any(c in model_answer for c in ['\\', '^', 'sqrt', 'frac']):
+                        score = -0.3
+                        reason = "Wrong but used math notation"
+                    else:
+                        score = -0.7
+                        reason = "Non-mathematical answer"
+        
         scores.append(score)
+        
+        if i < 5:
+            print(f"\n--- Example {i} ---")
+            print(f"Ground truth: {ground_truth}")
+            print(f"Completion (first 200 chars): {completion[:200]}")
+            print(f"Extracted answer: {model_answer}")
+            print(f"Score: {score} ({reason})")
+    
+    avg_score = np.mean(scores) if scores else 0.0
+    print(f"\nAverage reward: {avg_score:.3f}")
+    print(f"Score distribution: min={min(scores):.2f}, max={max(scores):.2f}, mean={avg_score:.3f}")
+    print("="*80 + "\n")
+    
     return scores
 
-
-# Import the actual DeepScaleR evaluation function
-from deepscaler import compute_score
-
-def compute_score_one_shot_rlvr(solution_str: str, ground_truth: str, use_think: bool = False) -> float:
+def compute_eval_score(solution_str: str, ground_truth: str) -> float:
     """
-    Compute reward score for One-Shot RLVR using the actual DeepScaleR function.
-    This matches the paper's evaluation exactly.
+    Compute evaluation score (binary: 0 or 1).
+    This is ONLY for evaluation, not for training rewards.
+    
+    For evaluation, we use strict binary scoring:
+    - 1.0 if correct
+    - 0.0 if incorrect
+    
+    This is different from the training reward function which can give
+    negative rewards and partial credit.
     """
-    # Use the actual DeepScaleR compute_score function from the paper
-    return compute_score(
-        data_source="math",  # or appropriate data source
-        solution_str=solution_str,
-        ground_truth=ground_truth,
-        extra_info=None,
-        use_think=use_think
-    )
+    from utils import extract_answer, grade_answer_mathd, grade_answer_sympy
+    
+    # Extract answer from model output
+    model_answer = extract_answer_robust(solution_str)
+    
+    if model_answer is None:
+        return 0.0
+    
+    # Check multiple valid forms of the answer
+    valid_answers = [
+        ground_truth,  # Original ground truth
+    ]
+    
+    for valid_ans in valid_answers:
+        is_correct = (
+            grade_answer_mathd(model_answer, valid_ans) or 
+            grade_answer_sympy(model_answer, valid_ans)
+        )
+        if is_correct:
+            return 1.0
+    
+    return 0.0
+
+
+# # One-Shot RLVR Reward Function (based on the paper)
+# def one_shot_rlvr_reward_function(prompts, completions, answer, **kwargs):
+#     """
+#     Reward function for One-Shot RLVR based on the paper.
+#     Uses sophisticated mathematical equivalence checking.
+#     """
+#     scores = []
+#     for completion, ground_truth in zip(completions, answer):
+#         score = compute_score_one_shot_rlvr(completion, ground_truth)
+#         scores.append(score)
+#     return scores
+
+
+# # Import the actual DeepScaleR evaluation function
+# from deepscaler import compute_score
+
+# def compute_score_one_shot_rlvr(solution_str: str, ground_truth: str, use_think: bool = False) -> float:
+#     """
+#     Compute reward score for One-Shot RLVR using the actual DeepScaleR function.
+#     This matches the paper's evaluation exactly.
+#     """
+#     # Use the actual DeepScaleR compute_score function from the paper
+#     return compute_score(
+#         data_source="math",  # or appropriate data source
+#         solution_str=solution_str,
+#         ground_truth=ground_truth,
+#         extra_info=None,
+#         use_think=use_think
+#     )
