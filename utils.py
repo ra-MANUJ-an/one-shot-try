@@ -52,19 +52,26 @@ def get_data(dataset_name: str) -> tuple[str, str | None, dict]:
     return dataset_configs[dataset_name]
 
 def format_prompt_with_chat_template(tokenizer, question):
-    required_ending = "Let's think step by step and output the final answer within \\boxed{} "
-
-    if not question.endswith(required_ending):
-        question = question + required_ending
-
-    messages = [
-        {"role": "user", "content": question}
-    ]
-    return tokenizer.apply_chat_template(
-        messages,
+    unwanted_suffix = "Let's think step by step and output the final answer within \\boxed{}."
+    if question.endswith(unwanted_suffix):
+        question = question[:-len(unwanted_suffix)].strip()
+    
+    # Use the exact same format as evaluate_base_model.py
+    prompt = tokenizer.apply_chat_template(
+        [
+            {
+                "role": "system", 
+                "content": (
+                    "Please reason step by step. "
+                    "Your final answer must appear inside \\boxed{...} and nothing else."
+                )
+            },
+            {"role": "user", "content": question},
+        ],
         tokenize=False,
-        add_generation_prompt=True
+        add_generation_prompt=True,
     )
+    return prompt
 
 
 #prompts
