@@ -1,11 +1,10 @@
 #!/bin/bash
 
-echo "Starting One-Shot RLVR Training..."
+echo "Starting One-Shot RLVR Training with Qwen2.5-1.5B..."
 
 export PYTHONPATH="${PYTHONPATH}:$(pwd)"
 export CUDA_VISIBLE_DEVICES=0,1,2,3
 
-# Get absolute path
 WORK_DIR=$(pwd)
 
 python3 -m main_one_shot_rlvr \
@@ -14,22 +13,23 @@ python3 -m main_one_shot_rlvr \
   data.train_split=pi1 \
   data.test_dataset=math500 \
   data.test_split=test \
-  data.batch_size=8 \
-  data.max_prompt_length=384 \
-  model.name='qwen3-0.6b' \
+  data.batch_size=2 \
+  data.max_prompt_length=1024 \
+  model.name='qwen2.5-1.5b' \
   model.mesh_config='[[1, 4], ["fsdp", "tp"]]' \
   model.use_gradient_checkpointing=true \
-  algorithm.total_generation_steps=128 \
-  algorithm.num_generations=2 \
+  algorithm.total_generation_steps=1024 \
+  algorithm.num_generations=4 \
   algorithm.temperature=0.6 \
   algorithm.top_p=0.95 \
-  trainer.total_epochs=1 \
+  algorithm.top_k=50 \
+  trainer.total_epochs=15 \
   trainer.val_before_train=false \
-  trainer.num_batches=64 \
-  trainer.gradient_accumulation_steps=16 \
-  trainer.checkpoint_dir="${WORK_DIR}/checkpoints/one_shot_rlvr/pi1/" \
+  trainer.num_batches=32 \
+  trainer.gradient_accumulation_steps=8 \
+  trainer.checkpoint_dir="${WORK_DIR}/checkpoints/one_shot_rlvr/qwen2.5-1.5b/" \
   trainer.intermediate_ckpt_dir="${WORK_DIR}/intermediate_ckpt/" \
-  trainer.metrics_log_dir="${WORK_DIR}/logs/tensorboard/one_shot_rlvr/pi1/" \
-  experiment.name="one_shot_rlvr_pi1_qwen3-0.6b"
+  trainer.metrics_log_dir="${WORK_DIR}/logs/tensorboard/one_shot_rlvr/qwen2.5-1.5b/" \
+  experiment.name="one_shot_rlvr_qwen2.5-1.5b"
 
 echo "One-Shot RLVR training completed!"
