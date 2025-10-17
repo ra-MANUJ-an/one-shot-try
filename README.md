@@ -42,9 +42,9 @@ exit
 
 ### Install VS Code Extensions
 
-Search for "Remote - SSH"
-Install "Remote - SSH" by Microsoft
-Also install "Remote - SSH: Editing Configuration Files" by Microsoft
+* Search for "Remote - SSH"
+* Install "Remote - SSH" by Microsoft
+* Also install "Remote - SSH: Editing Configuration Files" by Microsoft
 
 ### Create .ssh Directory (if it doesn't exist)
 
