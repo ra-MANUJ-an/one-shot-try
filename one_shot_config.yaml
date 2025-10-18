@@ -15,7 +15,7 @@ data:
   test_dataset: math500  # Evaluation dataset
   test_split: test
   
-  batch_size: 2  # REDUCED from 128 to fit in memory
+  batch_size: 128  # REDUCED from 128 to fit in memory
   max_prompt_length: 1024 #512  # REDUCED from 1024 to save memory
   num_test_batches: 100
   
@@ -25,39 +25,44 @@ data:
 # Model configuration
 model:
   name: 'qwen2.5-1.5b' # 'qwen3-0.6b'  # Can also use qwen3-1.5b for R1-Distill experiments
-  mesh_config: '[[1, 4], ["fsdp", "tp"]]'
+  mesh_config: '[[8, 4], ["fsdp", "tp"]]'
   # Add memory optimization settings
   use_gradient_checkpointing: true  # Trade compute for memory
-  dtype: 'bfloat16'  # Use mixed precision to reduce memory
+
+  # CRITICAL: Dtype configuration (based on verl/paper requirements)
+  actor_dtype: 'float32'      # Policy model MUST be fp32 for training stability
+  reference_dtype: 'float32'  # Reference model (frozen) - fp32 recommended
+  rollout_dtype: 'float32'    # Generation/rollout - fp32 recommended
+
+  dtype: 'float32'  # bfloat16 Use mixed precision to reduce memory
 
 # Algorithm parameters (following One-Shot RLVR paper)
 algorithm:
-  total_generation_steps: 1024 #256  # REDUCED from 768 to fit in memory
+  total_generation_steps: 3072 #256  # REDUCED from 768 to fit in memory
   temperature: 0.6  # Paper uses 0.6 for evaluation, 0.9 for training diversity
-  top_p: 0.95  # Paper uses 0.95 (not 1.0 like demo)
-  top_k: 50
-  num_generations: 2  # REDUCED from 2 to save memory
+  top_p: 1.0  # Paper uses 0.95 (not 1.0 like demo)
+  top_k: null
+  num_generations: 8  # REDUCED from 2 to save memory
   num_iterations: 1
-  beta: 0.5  # KL divergence penalty
+  beta: 0.001 #0.5  # KL divergence penalty
   epsilon: 0.2  # PPO-style clipping
 
 # Trainer configuration
 trainer:
-  val_before_train: True  # Evaluate before training
-  learning_rate: 3e-6  # Conservative learning rate for few-shot
+  val_before_train: false  # Evaluate before training
+  learning_rate: 1e-6  # Conservative learning rate for few-shot
   b1: 0.9
   b2: 0.999
   weight_decay: 0.1
-  warmup_steps_ratio: 0.1
+  warmup_steps_ratio: 0.0 #0.1
   max_grad_norm: 0.1
   
   # Training steps calculation: num_batches * num_iterations * epochs
-  num_batches: 64 #16  # REDUCED from 64 to fit in memory
-  total_epochs: 1
+  num_batches: 1 #16  # REDUCED from 64 to fit in memory
+  total_epochs: 20
   
   # Memory optimization settings
-  gradient_accumulation_steps: 16 #4  # Simulate larger batches
-  max_memory_per_gpu: 0.8  # Use only 80% of GPU memory
+  gradient_accumulation_steps: 1 #4  # Simulate larger batches
   
   # Checkpointing and logging
   save_freq: 40
