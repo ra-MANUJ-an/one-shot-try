@@ -15,21 +15,10 @@ from pathlib import Path
 import jax
 import jax.numpy as jnp
 
-# Check if we need multi-host setup
-num_devices = jax.device_count()
-num_local_devices = jax.local_device_count()
-
-print(f"JAX Initialization:")
-print(f"  Total devices: {num_devices}")
-print(f"  Local devices: {num_local_devices}")
-print(f"  Process index: {jax.process_index()}")
-print(f"  Process count: {jax.process_count()}")
-
 # Only initialize if not already initialized AND we have multiple hosts
 if jax.process_count() > 1 and not hasattr(jax.config, '_distributed_initialized'):
     print("Initializing JAX distributed for multi-host setup...")
     
-    # Method 1: Auto-detect coordinator (recommended)
     try:
         jax.distributed.initialize()
         print("✓ JAX distributed initialized successfully")
@@ -38,6 +27,17 @@ if jax.process_count() > 1 and not hasattr(jax.config, '_distributed_initialized
         print("   Continuing with single-host mode...")
 else:
     print("✓ Using single-host mode or already initialized")
+
+# Check if we need multi-host setup
+# NOW we can safely call device_count AFTER initialization
+num_devices = jax.device_count()
+num_local_devices = jax.local_device_count()
+
+print(f"JAX Initialization:")
+print(f"  Total devices: {num_devices}")
+print(f"  Local devices: {num_local_devices}")
+print(f"  Process index: {jax.process_index()}")
+print(f"  Process count: {jax.process_count()}")
 
 # NOW import heavy modules
 from one_shot_rlvr_trainer import OneShotRLVRTrainer
