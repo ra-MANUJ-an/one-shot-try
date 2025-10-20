@@ -123,8 +123,6 @@ class OneShotRLVRTrainer:
         self.cfg = cfg
         self._setup_config()
         self._setup_model_configs()
-
-        self._setup_dtype_config()
         
         # Core components (initialized later)
         self.base_model = None      
@@ -147,7 +145,7 @@ class OneShotRLVRTrainer:
         
         # One-Shot RLVR specific parameters
         self.num_shots = self.cfg.data.get("num_shots", 1)  # Key parameter from paper
-        self.duplicate_factor = 128 #self.cfg.data.get("duplicate_factor", 128)  # Duplicate examples to fill batch
+        self.duplicate_factor = self.cfg.data.get("duplicate_factor", 128)  # Duplicate examples to fill batch
         
         # Training data
         self.train_dataset_name = self.cfg.data.train_dataset
@@ -240,27 +238,6 @@ class OneShotRLVRTrainer:
             },
 
         }
-
-    def _setup_dtype_config(self):
-        """Setup dtype configuration for different model components."""
-        # Get dtype settings from config with defaults
-        self.actor_dtype = getattr(jnp, self.cfg.model.get("actor_dtype", "float32"))
-        self.reference_dtype = getattr(jnp, self.cfg.model.get("reference_dtype", "float32"))
-        self.rollout_dtype = getattr(jnp, self.cfg.model.get("rollout_dtype", "float32"))
-        
-        print("="*60)
-        print("DTYPE CONFIGURATION:")
-        print(f"  Actor (policy) model: {self.actor_dtype}")
-        print(f"  Reference model: {self.reference_dtype}")
-        print(f"  Rollout/generation: {self.rollout_dtype}")
-        print("="*60)
-        
-        # Validate dtype settings
-        if self.actor_dtype != jnp.float32:
-            print("⚠️  WARNING: Actor model is not fp32!")
-            print("   This may cause training instability and poor results.")
-            print("   Paper and verl framework use fp32 for actor.")
-
     # def create_one_shot_dataloaders(self):
     #     """
     #     Create dataloaders for One-Shot RLVR.
@@ -315,68 +292,6 @@ class OneShotRLVRTrainer:
     #     print(f"Train batches: {len(self.train_dataset)}")
     #     print(f"Test batches: {len(self.test_dataset)}")
 
-    # def create_one_shot_dataloaders(self):
-    #     """
-    #     Create dataloaders for One-Shot RLVR.
-    #     Key difference: Only use very few examples, duplicate to fill batches.
-    #     """
-    #     print(f"Creating One-Shot RLVR dataloaders with {self.num_shots} shots...")
-        
-    #     # Load the specified training examples
-    #     if self.train_dataset_name == "one_shot_rlvr":
-    #         print("\n\n\n\n\n\n\n\nOneSHOT\n\n\n\n\n\n\n\n")
-    #         train_examples = self._load_one_shot_examples()
-    #     else:
-    #         train_dataset_raw = self._load_dataset(
-    #             self.train_dataset_name, 
-    #             self.train_data_dir, 
-    #             self.train_dataset_split
-    #         )
-    #         train_examples = list(train_dataset_raw[:self.num_shots])
-        
-    #     print(f"Loaded {len(train_examples)} training examples")
-    #     print(f"Example training data:")
-    #     pprint(train_examples[0] if train_examples else "No examples found")
-        
-    #     # METHOD 1: Use duplicate_factor explicitly
-    #     # Duplicate each example duplicate_factor times
-    #     duplicated_examples = []
-    #     for example in train_examples:
-    #         for _ in range(self.duplicate_factor):
-    #             duplicated_examples.append(example)
-        
-    #     print(f"Applied duplicate_factor={self.duplicate_factor}")
-    #     print(f"Duplicated {len(train_examples)} examples to {len(duplicated_examples)} total examples")
-        
-    #     # Verify: Each unique example should appear duplicate_factor times
-    #     print(f"Expected total: {len(train_examples)} * {self.duplicate_factor} = {len(train_examples) * self.duplicate_factor}")
-    #     print(f"Actual total: {len(duplicated_examples)}")
-    #     assert len(duplicated_examples) == len(train_examples) * self.duplicate_factor, \
-    #         "Duplication factor not applied correctly!"
-        
-    #     # Create grain datasets
-    #     train_dataset = (
-    #         grain.MapDataset.source(duplicated_examples)
-    #         .batch(self.batch_size)[:self.num_batches]
-    #     )
-        
-    #     # Test dataset (normal loading)
-    #     test_dataset_raw = self._load_dataset(
-    #         self.test_dataset_name, 
-    #         self.test_data_dir, 
-    #         self.test_dataset_split
-    #     )
-    #     test_dataset = test_dataset_raw.batch(self.batch_size)[:self.num_test_batches]
-        
-    #     self.train_dataset = train_dataset.repeat(self.num_epochs) 
-    #     self.test_dataset = test_dataset
-        
-    #     print("One-Shot RLVR Datasets Created")
-    #     print(f"Train batches: {len(self.train_dataset)}")
-    #     print(f"Test batches: {len(self.test_dataset)}")
-    #     print(f"Examples per batch: {self.batch_size}")
-    #     print(f"Total training examples available: {len(duplicated_examples)}")
-
     def create_one_shot_dataloaders(self):
         """
         Create dataloaders for One-Shot RLVR - CORRECTED VERSION.
@@ -398,7 +313,6 @@ class OneShotRLVRTrainer:
         
         print(f"Loaded {len(train_examples)} unique training examples")
         
-        # CRITICAL FIX: Properly duplicate examples using duplicate_factor
         duplicated_examples = []
         for example in train_examples:
             for _ in range(self.duplicate_factor):
@@ -657,20 +571,19 @@ class OneShotRLVRTrainer:
     #         return ckpt_path
 
     def _load_base_model(self, ckpt_path):
-        """Load the base model with correct dtype."""
+        """Load the base model."""
         config = self.model_configs[self.model_name]
         self.mesh = jax.make_mesh(*self.mesh_config)
         self.model_config = config["config_fn"]()
 
-        print(f"Loading base (reference) model with dtype: {self.reference_dtype}")
-
+        # Both qwen3 and qwen2.5 use the same loading pattern
         if self.model_name.startswith("qwen3") or self.model_name.startswith("qwen2.5"):
             print("\n\n\n\n\n\n\nI'm using QWEN\n\n\n\n\n\n\n")
             self.base_model = config["params_loader"](
                 file_dir=ckpt_path, 
                 config=self.model_config,
                 mesh=self.mesh,
-                dtype=self.reference_dtype  # ← FIXED: Use configured dtype
+                dtype=jnp.float32
             )
         else:
             # Gemma loading logic
@@ -679,7 +592,7 @@ class OneShotRLVRTrainer:
             )
             abs_state = nnx.state(abs_model)
             abs_state = jax.tree.map(
-                lambda a, s: jax.ShapeDtypeStruct(a.shape, self.reference_dtype, sharding=s),
+                lambda a, s: jax.ShapeDtypeStruct(a.shape, jnp.float32, sharding=s),
                 abs_state,
                 nnx.get_named_sharding(abs_state, self.mesh),
             )
@@ -688,40 +601,6 @@ class OneShotRLVRTrainer:
             
             graph_def, _ = nnx.split(abs_model)
             self.base_model = nnx.merge(graph_def, restored_params)
-
-    # def _load_base_model(self, ckpt_path):
-    #     """Load the base model."""
-    #     config = self.model_configs[self.model_name]
-    #     self.mesh = jax.make_mesh(*self.mesh_config)
-    #     self.model_config = config["config_fn"]()
-
-    #     print(f"Loading base (reference) model with dtype: {self.reference_dtype}")
-
-    #     # Both qwen3 and qwen2.5 use the same loading pattern
-    #     if self.model_name.startswith("qwen3") or self.model_name.startswith("qwen2.5"):
-    #         print("\n\n\n\n\n\n\nI'm using QWEN\n\n\n\n\n\n\n")
-    #         self.base_model = config["params_loader"](
-    #             file_dir=ckpt_path, 
-    #             config=self.model_config,
-    #             mesh=self.mesh,
-    #             dtype=self.reference_dtype
-    #         )
-    #     else:
-    #         # Gemma loading logic
-    #         abs_model = nnx.eval_shape(
-    #             lambda: config["model_class"](self.model_config, rngs=nnx.Rngs(params=0))
-    #         )
-    #         abs_state = nnx.state(abs_model)
-    #         abs_state = jax.tree.map(
-    #             lambda a, s: jax.ShapeDtypeStruct(a.shape, jnp.float32, sharding=s),
-    #             abs_state,
-    #             nnx.get_named_sharding(abs_state, self.mesh),
-    #         )
-    #         checkpointer = ocp.StandardCheckpointer()
-    #         restored_params = checkpointer.restore(ckpt_path, target=abs_state)
-            
-    #         graph_def, _ = nnx.split(abs_model)
-    #         self.base_model = nnx.merge(graph_def, restored_params)
 
     # def _load_base_model(self, ckpt_path):
     #     """Load the base model."""
@@ -751,21 +630,19 @@ class OneShotRLVRTrainer:
     #         graph_def, _ = nnx.split(abs_model)
     #         self.base_model = nnx.merge(graph_def, restored_params)
 
-
     def _create_policy_model(self):
-        """Create policy model (trainable copy) with correct dtype."""
+        """Create policy model (trainable copy)."""
         if self.base_model is None:
             raise ValueError("Base model must be loaded first")
         
-        print(f"Creating policy (actor) model with dtype: {self.actor_dtype}")
-        
+        # Both qwen3 and qwen2.5 use the same pattern
         if self.model_name.startswith("qwen3") or self.model_name.startswith("qwen2.5"):
             config = self.model_configs[self.model_name]
             self.policy_model = config["params_loader"](
                 file_dir=self.model_checkpoint_path,
                 config=self.model_config,
                 mesh=self.mesh,
-                dtype=self.actor_dtype  # ← FIXED: Use configured dtype for actor
+                dtype=jnp.float32
             )
         else:
             # Gemma loading logic
@@ -773,15 +650,6 @@ class OneShotRLVRTrainer:
             policy_model = config["model_class"](self.model_config, rngs=nnx.Rngs(params=0))
             
             base_state = nnx.state(self.base_model)
-            
-            # CRITICAL: Convert to actor_dtype if different from reference
-            if self.actor_dtype != self.reference_dtype:
-                print(f"Converting policy model from {self.reference_dtype} to {self.actor_dtype}")
-                base_state = jax.tree.map(
-                    lambda x: x.astype(self.actor_dtype) if hasattr(x, 'astype') else x,
-                    base_state
-                )
-            
             nnx.update(policy_model, base_state)
             self.policy_model = policy_model
             
@@ -790,34 +658,6 @@ class OneShotRLVRTrainer:
                 pspecs = nnx.get_partition_spec(state)
                 sharded_state = jax.lax.with_sharding_constraint(state, pspecs)
                 nnx.update(self.policy_model, sharded_state)
-
-    # def _create_policy_model(self):
-    #     """Create policy model (trainable copy)."""
-    #     if self.base_model is None:
-    #         raise ValueError("Base model must be loaded first")
-        
-    #     # Both qwen3 and qwen2.5 use the same pattern
-    #     if self.model_name.startswith("qwen3") or self.model_name.startswith("qwen2.5"):
-    #         config = self.model_configs[self.model_name]
-    #         self.policy_model = config["params_loader"](
-    #             file_dir=self.model_checkpoint_path,
-    #             config=self.model_config,
-    #             mesh=self.mesh
-    #         )
-    #     else:
-    #         # Gemma loading logic
-    #         config = self.model_configs[self.model_name]
-    #         policy_model = config["model_class"](self.model_config, rngs=nnx.Rngs(params=0))
-            
-    #         base_state = nnx.state(self.base_model)
-    #         nnx.update(policy_model, base_state)
-    #         self.policy_model = policy_model
-            
-    #         with self.mesh:
-    #             state = nnx.state(self.policy_model)
-    #             pspecs = nnx.get_partition_spec(state)
-    #             sharded_state = jax.lax.with_sharding_constraint(state, pspecs)
-    #             nnx.update(self.policy_model, sharded_state)
 
     # def _create_policy_model(self):
     #     """Create policy model (trainable copy)."""
@@ -880,13 +720,6 @@ class OneShotRLVRTrainer:
         Train the model using One-Shot RLVR with the correct Tunix API.
         """
         print(f"Starting One-Shot RLVR training with {self.num_shots} shots...")
-
-        # Print dtype configuration again for confirmation
-        print("\nDtype Configuration for Training:")
-        print(f"  Policy model (trainable): {self.actor_dtype}")
-        print(f"  Reference model (frozen): {self.reference_dtype}")
-        print(f"  Optimizer: fp32 (handled by optax)")
-
         warmup_steps = int(self.warmup_steps_ratio * self.max_steps)
 
         print(f"One-Shot RLVR Training Configuration:")
@@ -943,7 +776,7 @@ class OneShotRLVRTrainer:
                 actor_optimizer=self.optimizer,
                 eval_every_n_steps=self.eval_every_n_steps,
                 max_steps=self.max_steps,
-                # gradient_accumulation_steps=4,
+                # gradient_accumulation_steps=1,
                 # metrics logging
                 metrics_logging_options=metrics_logging_options,
                 # checkpoint saving
@@ -1226,7 +1059,7 @@ class OneShotRLVRTrainer:
             return output[0]
         return output
 
-# # At the top, add this import if not already there
+
 import numpy as np
 
 # # One-Shot RLVR Reward Function (based on the paper)
@@ -1304,7 +1137,7 @@ import numpy as np
 #             reason = "No \\boxed{} answer found"
 #         else:
 #             # Check if correct
-#             valid_answers = [ground_truth, "12.8", "12.81", "12.79", "\\sqrt[3]{2048}"]
+#             valid_answers = [ground_truth, "12.8", "12.7", "12.699", "12.71", "12.69", "\\sqrt[3]{2048}"]
 #             is_correct = False
             
 #             for valid_ans in valid_answers:
@@ -1329,12 +1162,10 @@ import numpy as np
                     
 #                     # Check if close (within 50% of correct answer)
 #                     ratio = abs(model_val - target_val) / target_val
-#                     if ratio < 0.05:
-#                         score = 0.5
-#                         reason = f"Close but not exact ({model_val} vs {target_val})"
+                    
 #                     if ratio < 0.1:
 #                         # Very close - small negative
-#                         score = -0.1
+#                         score = 0.7
 #                         reason = f"Close but not exact ({model_val} vs {target_val})"
 #                     elif ratio < 0.5:
 #                         # Somewhat close - attempted but wrong
@@ -1356,12 +1187,12 @@ import numpy as np
         
 #         scores.append(score)
         
-#         # if i < 5:
-#         #     print(f"\n--- Example {i} ---")
-#         #     print(f"Ground truth: {ground_truth}")
-#         #     print(f"Completion (first 200 chars): {completion[:200]}")
-#         #     print(f"Extracted answer: {model_answer}")
-#         #     print(f"Score: {score} ({reason})")
+#         if i < 5:
+#             print(f"\n--- Example {i} ---")
+#             print(f"Ground truth: {ground_truth}")
+#             print(f"Completion (first 200 chars): {completion[:200]}")
+#             print(f"Extracted answer: {model_answer}")
+#             print(f"Score: {score} ({reason})")
     
 #     avg_score = np.mean(scores) if scores else 0.0
 #     print(f"\nAverage reward: {avg_score:.3f}")
