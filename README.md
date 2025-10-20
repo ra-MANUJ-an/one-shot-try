@@ -92,3 +92,20 @@ pip install git+https://github.com/google/flax.git
 then bash script.sh, 
 
 bash run_evaluation.sh for baseline model evaluation
+
+### VeRL Hyperparameters
+
+| Hyperparameter | Value |
+| :--- | :--- |
+| **Batch size** | 128 |
+| **Duplicate factor** | 128 (implicit) |
+| **Training steps** | 2000 |
+| **Temperature** | 0.6 |
+| **Top-p** | 1.0 (unrestricted) |
+| **Top-k** | Not mentioned |
+| **KL coefficient ($\beta$)** | 0.001 |
+| **Entropy coef ($\alpha$)** | -0.001 |
+| **Learning rate** | 1e-6 |
+| **Num generations** | 8 |
+| **Max response length** | 3072 |
+| **Gradient accum** | Not used |
