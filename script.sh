@@ -19,9 +19,9 @@ python3 -m main_one_shot_rlvr \
   model.use_gradient_checkpointing=true \
   algorithm.total_generation_steps=1024 \
   algorithm.num_generations=4 \
-  algorithm.temperature=0.01 \
-  algorithm.top_p=1.0 \
-  algorithm.top_k=null \
+  algorithm.temperature=0.6 \
+  algorithm.top_p=0.95 \
+  algorithm.top_k=50 \
   trainer.total_epochs=25 \
   trainer.val_before_train=false \
   trainer.num_batches=32 \
