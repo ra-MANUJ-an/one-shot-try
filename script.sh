@@ -1,11 +1,11 @@
 #!/bin/bash
-
+ 
 echo "Starting One-Shot RLVR Training with Qwen2.5-1.5B..."
-
+ 
 export PYTHONPATH="${PYTHONPATH}:$(pwd)"
-
+ 
 WORK_DIR=$(pwd)
-
+ 
 python3 -m main_one_shot_rlvr \
   data.num_shots=1 \
   data.train_dataset=one_shot_rlvr \
@@ -19,10 +19,10 @@ python3 -m main_one_shot_rlvr \
   model.use_gradient_checkpointing=true \
   algorithm.total_generation_steps=1024 \
   algorithm.num_generations=4 \
-  algorithm.temperature=0.6 \
+  algorithm.temperature=0.5 \
   algorithm.top_p=0.95 \
   algorithm.top_k=50 \
-  trainer.total_epochs=25 \
+  trainer.total_epochs=30 \
   trainer.val_before_train=false \
   trainer.num_batches=32 \
   trainer.gradient_accumulation_steps=8 \
@@ -30,5 +30,6 @@ python3 -m main_one_shot_rlvr \
   trainer.intermediate_ckpt_dir="${WORK_DIR}/intermediate_ckpt/" \
   trainer.metrics_log_dir="${WORK_DIR}/logs/tensorboard/one_shot_rlvr/qwen2.5-1.5b/" \
   experiment.name="one_shot_rlvr_qwen2.5-1.5b"
-
+ 
 echo "One-Shot RLVR training completed!"
+ 
